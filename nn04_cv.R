@@ -1,0 +1,80 @@
+#install.packages("neuralnet")
+library(reshape); library(neuralnet)
+
+data = read.table("econ301hw.txt")
+data = rename(data, c(V1 = "lnwage",
+                      V2 = "age",
+                      V3 = "male",
+                      V4 = "vet",
+                      V5 = "met",
+                      V6 = "gpa",
+                      V7 = "toeic",
+                      V8 = "abro",
+                      V9 = "intn",
+                      V10 = "busi",
+                      V11 = "engi",
+                      V12 = "dble",
+                      V13 = "pwage",
+                      V14 = "fedu",
+                      V15 = "medu"))
+
+normalize = function(x){return( (x - min(x))/(max(x) - min(x) ) )  }
+#normalize = function(x){return( (x - mean(x))/sd(x)  }
+data$age = normalize(data$age);
+data$lnwage = normalize(data$lnwage);
+data$gpa = normalize(data$gpa)
+data$toeic = normalize(data$toeic);
+data$pwage = normalize(data$pwage);
+data$fedu = normalize(data$fedu);
+data$medu = normalize(data$medu)
+
+n=500
+cutoff = 0.8;
+
+sn = sample(1:n, size = 0.9*n)
+d.training= data[sn,]
+d.test = data[-sn,]
+
+iter=1
+iterlim=10
+
+prate_cv = matrix(0, iterlim, 1)
+model_list = list()
+while (iter <= iterlim){
+  sn = sample(1:0.9*n, size = 0.8*0.9*n)
+  d.training.training= data[sn,]
+  d.training.test = data[-sn,]
+  
+  eq1 = vet ~ age + toeic + gpa + abro + intn + busi + engi + dble + pwage + fedu + medu + lnwage
+  
+  model_cv = neuralnet(eq1, d.training.training, hidden = c(2,2,1),
+                       threshold = 0.02, stepmax = 1e+06, algorithm = "rprop+")
+  model_list[[iter]] = model_cv
+  
+  pred_cv= compute(model_cv, d.training.test)
+  vet_cv = pred_cv$net.result
+  vet_cv = as.numeric((vet_cv>=cutoff))
+  prate_cv[iter,1] = mean(as.numeric(vet_cv == d.training.test$vet))
+  iter = iter+1
+}
+
+print(prate_cv)
+
+where = which.max(prate_cv)
+model_nn = model_list[[where]]
+pred_nn = compute(model_nn, d.test)
+vet_nn = pred_nn$net.result
+vet_nn = as.numeric((vet_nn>=cutoff))
+prate_nn = mean(as.numeric(vet_nn == d.test$vet))
+
+model_ols = neuralnet(eq1, d.training.training, hidden = 0,
+                      threshold = 0.02, stepmax = 1e+06, algorithm = "rprop+")
+
+pred_ols= compute(model_ols, d.test)
+vet_ols = pred_ols$net.result
+vet_ols = as.numeric((vet_ols>=cutoff))
+prate_ols = mean(as.numeric(vet_ols == d.test$vet))
+
+print(cbind(d.test$vet, vet_nn, vet_ols))
+print(cbind(prate_nn, prate_ols))
+
